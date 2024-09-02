@@ -1,4 +1,10 @@
 #include "systemcalls.h"
+#include "stdlib.h"
+#include "sys/stat.h"
+#include "sys/types.h"
+#include "sys/wait.h"
+#include "unistd.h"
+#include <fcntl.h>
 
 /**
  * @param cmd the command to execute with system()
@@ -16,8 +22,7 @@ bool do_system(const char *cmd)
  *   and return a boolean true if the system() call completed with success
  *   or false() if it returned a failure
 */
-
-    return true;
+    return system(cmd) != 0 ? false : true;
 }
 
 /**
@@ -39,7 +44,8 @@ bool do_exec(int count, ...)
     va_list args;
     va_start(args, count);
     char * command[count+1];
-    int i;
+    pid_t cpid;
+    int i, ret = false, status;
     for(i=0; i<count; i++)
     {
         command[i] = va_arg(args, char *);
@@ -47,7 +53,7 @@ bool do_exec(int count, ...)
     command[count] = NULL;
     // this line is to avoid a compile warning before your implementation is complete
     // and may be removed
-    command[count] = command[count];
+    //command[count] = command[count];
 
 /*
  * TODO:
@@ -59,9 +65,23 @@ bool do_exec(int count, ...)
  *
 */
 
+    cpid = fork();
+
+    if (cpid == 0)
+    {
+        ret = execv(command[0], command);
+        exit(EXIT_FAILURE);
+    }
+    else if (cpid > 0)
+    {
+        ret = waitpid(cpid, &status, 0) < 0 ? false : true;
+
+        if ((ret == true) && (WIFEXITED(status) != true || WEXITSTATUS(status) != 0))
+            ret = false;
+    }
     va_end(args);
 
-    return true;
+    return ret;
 }
 
 /**
@@ -74,7 +94,8 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
     va_list args;
     va_start(args, count);
     char * command[count+1];
-    int i;
+    pid_t cpid;
+    int i, ret = false, status;;
     for(i=0; i<count; i++)
     {
         command[i] = va_arg(args, char *);
@@ -82,7 +103,7 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
     command[count] = NULL;
     // this line is to avoid a compile warning before your implementation is complete
     // and may be removed
-    command[count] = command[count];
+    //command[count] = command[count];
 
 
 /*
@@ -92,8 +113,29 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
  *   The rest of the behaviour is same as do_exec()
  *
 */
+    int fd = open(outputfile, O_RDWR|O_TRUNC|O_CREAT, 0666);
+    if (fd < 0) { perror("open"); abort(); }
+ 
+    cpid = fork();
+
+    if (cpid == 0)
+    {
+        if (dup2(fd, 1) < 0) { perror("dup2"); abort(); }
+        close(fd);
+        ret = execv(command[0], command);
+        exit(EXIT_FAILURE);
+    }
+    else if (cpid > 0)
+    {
+        ret = waitpid(cpid, &status, 0) < 0 ? false : true;
+
+        if ((ret == true) && (WIFEXITED(status) != true || WEXITSTATUS(status) != 0))
+            ret = false;
+
+        close(fd);
+    }
 
     va_end(args);
 
-    return true;
+    return ret;
 }
